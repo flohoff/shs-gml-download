@@ -174,10 +174,6 @@ my $ogc_fid=$row1->{ogc_fid};
 my $flur=$row1->{flur};
 
 printf("%s %s Starting\n", $flur, $ogc_fid);
-if (-f sprintf("output/%s.zip", $flur)) {
-	printf("%s %s Already have\n", $flur, $ogc_fid);
-	exit;
-}
 my $shsgdl=new SHS::Gaia::Download($ua, $flur, $ogc_fid);
 
 my $res=$shsgdl->start();
