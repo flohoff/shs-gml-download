@@ -79,13 +79,15 @@ package SHS::Gaia::Download;
 	}
 
 	sub wait($self) {
-		while(42) {
+		# Sometimes the server is overloaded and will not return any more requests
+		# so we simply bail out after 45 seconds.
+		for(my $i=0;$i<45;$i++) {
 			sleep(1);
 
 			my $uri=sprintf("%s?action=status&job=%s&_=%s",
 				$self->{multiuri},
 				$self->{start}->jobid(),
-				sprintf("%s%s", $self->{time}, $self->{waitindicator}++));
+				sprintf("%s%03d", $self->{time}, $waitindicatorstart+$i));
 
 			my $request=HTTP::Request->new(GET => $uri);
 			$request->header("Content-Type" => "application/json");
@@ -98,6 +100,7 @@ package SHS::Gaia::Download;
 				return $resp;
 			}
 		}
+		return undef;
 	}
 
 	sub download($self) {
@@ -180,10 +183,13 @@ my $res=$shsgdl->start();
 if ($res->success()) {
 	printf("%s %s Waiting\n", $flur, $ogc_fid);
 	my $wait=$shsgdl->wait();
-	if ($wait->status_done()) {
-		printf("%s %s Downloading\n", $flur, $ogc_fid);
-		my $dl=$shsgdl->download();
+	if (!defined($wait) || !$wait->status_done()) {
+		printf("Wait failed\n");
+		exit(1)
 	}
+
+	printf("%s %s Downloading\n", $flur, $ogc_fid);
+	my $dl=$shsgdl->download();
 }
 
 my $sql3=$dbh->prepare("update flur set downloaded='now'::timestamp where id = ?");
