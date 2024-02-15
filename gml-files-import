@@ -1,0 +1,43 @@
+#!/bin/bash
+
+set -e
+
+BASE=$(readlink -f $(dirname $0))
+INPUTDIR=${BASE}/output
+STATUSDIR=${BASE}/gml-files-import-status
+DATABASE=shs-alkis
+
+[ -d ${STATUSDIR} ] || mkdir ${STATUSDIR}
+
+for filename in ${INPUTDIR}/*.zip; do
+
+	flur=$(basename $filename | sed -e 's/.zip$//')
+
+	if [ -f ${STATUSDIR}/${flur}.gfs ]; then
+		echo Already imported $flur
+		continue
+	fi
+
+	echo Importing $flur
+
+	pushd ${STATUSDIR}
+
+	# Uncompress original file until we have an .xml
+	rm -f ${flur}.xml.gz ${flur}.xml
+	unzip ${filename}
+	gunzip ${flur}.xml.gz
+
+	# Import the GML file and merge it into ALKIS db	
+	ogr2ogr  -f "PostgreSQL" PG:"dbname=${DATABASE}" \
+		-update -append -skipfailures \
+		-nlt CONVERT_TO_LINEAR -a_srs "EPSG:25832" \
+		${flur}.xml
+
+	# Remove extraced files
+	rm -f ${flur}.xml ${flur}.xml.gz
+
+	popd
+
+done
+
+

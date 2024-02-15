@@ -59,25 +59,41 @@ Eine möglichkeit der Parallelisierung ist
 
 Hierbei werden 4 prozesse parallel gestartet die Flure herunterladen.
 
-Import der GML files
-====================
+Vorbereitungen für den import der GML files
+===========================================
+
+    createdb shs-alkis
+    psql shs-alkis -c "create extension postgis;"
 
     git clone git@github.com:norBIT/alkisimport.git
     cd alkisimport
-    psql shs -v alkis_epsg=25832 -v alkis_schema=public -v postgis_schema=public -v parent_schema=public -f alkis-init.sql 
+
+    psql shs-alkis \
+	-v alkis_epsg=25832 \
+	-v alkis_schema=public \
+	-v postgis_schema=public \
+	-v parent_schema=public \
+	-f alkis-init.sql 
 
 Scheinbar weicht das ALKIS/GML in Schleswig-Holstein teilweise vom Standard Schema ab. Daher hab ich folgende
 constraints noch entfernt:
 
-    psql shs -c "alter table ax_bodenschaetzung alter column kulturart drop not null;"
-    psql shs -c "alter table ax_lagefestpunkt alter column gemeinde_land drop not null;"
-    psql shs -c "alter table ax_lagefestpunkt alter column land_land drop not null;"
-    psql shs -c "alter table ax_hoehenfestpunkt alter column gemeinde_land drop not null;"
-    psql shs -c "alter table ax_hoehenfestpunkt alter column land_land drop not null;"
-    psql shs -c "alter table ax_schwerefestpunkt alter column gemeinde_land drop not null;"
-    psql shs -c "alter table ax_schwerefestpunkt alter column land_land drop not null;"
-    psql shs -c "alter table ax_georeferenziertegebaeudeadresse alter column hatauch drop not null;"
-    psql shs -c "alter table ax_schwere alter column schweresystem drop not null;"
+    psql shs-alkis -c "alter table ax_bodenschaetzung alter column kulturart drop not null;"
+    psql shs-alkis -c "alter table ax_lagefestpunkt alter column gemeinde_land drop not null;"
+    psql shs-alkis -c "alter table ax_lagefestpunkt alter column land_land drop not null;"
+    psql shs-alkis -c "alter table ax_hoehenfestpunkt alter column gemeinde_land drop not null;"
+    psql shs-alkis -c "alter table ax_hoehenfestpunkt alter column land_land drop not null;"
+    psql shs-alkis -c "alter table ax_schwerefestpunkt alter column gemeinde_land drop not null;"
+    psql shs-alkis -c "alter table ax_schwerefestpunkt alter column land_land drop not null;"
+    psql shs-alkis -c "alter table ax_georeferenziertegebaeudeadresse alter column hatauch drop not null;"
+    psql shs-alkis -c "alter table ax_schwere alter column schweresystem drop not null;"
+
+Import der GML Dateien
+======================
+
+    ./gml-import-files
+
+Lädt alle dateien aus "output" in die postgis enablete Datenbank **shs-alkis**. Kann zu jedem zeitpunkt abgebrochen werden und fängt wieder an. Dieser import dauert mehrere Stunden bis Tage.
 
 Abhaengigkeiten (Debian)
 ========================
