@@ -95,6 +95,40 @@ Import der GML Dateien
 
 Lädt alle dateien aus "output" in die postgis enablete Datenbank **shs-alkis**. Kann zu jedem zeitpunkt abgebrochen werden und fängt wieder an. Dieser import dauert mehrere Stunden bis Tage.
 
+
+Export Hausumring shape
+=======================
+
+Erst muss eine tabelle mit den entsprechenden infos erzeugt werden wie z.b. hier:
+
+	drop table if exists hu_shs;
+	select  *
+	into    hu_shs
+	from    (
+		select  ogc_fid, gml_id, 'gebaude' as quelle, gebaeudefunktion as funktion, null as bauart, wkb_geometry
+		from    ax_gebaeude
+		where   lagezurerdoberflaeche is null or lagezurerdoberflaeche <> '1200'
+		union all
+		select  ogc_fid, gml_id, 'bauteil' as quelle, null, bauart, wkb_geometry
+		from    ax_bauteil
+		where   lagezurerdoberflaeche is null or lagezurerdoberflaeche <> '1200'
+		union all
+		select  ogc_fid, gml_id, 'sonstigesbauwerkodersonstigeeinrichtung' as quelle, bauwerksfunktion, null, wkb_geometry
+		from    ax_sonstigesbauwerkodersonstigeeinrichtung
+		union all
+		select  ogc_fid, gml_id, 'bauwerkoderanlagefuerindustrieundgewerbe' as quelle, bauwerksfunktion, null, wkb_geometry
+		from    ax_bauwerkoderanlagefuerindustrieundgewerbe
+		) hu
+	where   GeometryType(wkb_geometry) in ( 'POLYGON', 'MULTIPOLYGON');
+
+Und anschliessend kann die Tabelle als Shape exportiert werden:
+
+	ogr2ogr -f "ESRI Shapefile" \
+		hu_shs.shp \
+		PG:"dbname='shs-alkis'" \
+		hu_shs
+
+
 Abhaengigkeiten (Debian)
 ========================
 
