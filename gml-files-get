@@ -152,7 +152,12 @@ sub db_fetch_flur($dbh) {
 		with _queue_id AS (
 			select id
 			from flur
-			where downloaded is null and downloadlasttry is null
+			where downloaded is null 
+			and	(
+				downloadlasttry is null
+				or
+				downloadlasttry < 'now'::timestamp-'30m'::interval
+				)
 			limit 1
 			for update skip locked
 		) update flur set downloadlasttry = 'now'::timestamp
