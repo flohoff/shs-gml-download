@@ -1,0 +1,139 @@
+#!/usr/bin/perl -w
+
+use strict;
+use LWP::UserAgent;
+use JSON;
+use Data::Dumper;
+use DBI;
+use open IO => ":encoding(utf-8)";
+use open ':std';
+use feature 'signatures';
+no warnings 'experimental::signatures';
+
+my $dbhost="dbi:Pg:dbname=shs;host=127.0.0.1";
+my $dblogin="flo";
+my $dbpass="";
+
+my $dbh = DBI->connect($dbhost, $dblogin, $dbpass) or die $DBI::errstr;
+$dbh->{pg_enable_utf8} = 1;
+binmode STDOUT, ":utf8";
+
+my $ua=LWP::UserAgent->new();
+
+#$ua->add_handler("request_send",  sub { shift->dump; return });
+#$ua->add_handler("response_done", sub { shift->dump; return });
+
+sub insert_flur($dbh, $feature) {
+
+		my $sql=$dbh->prepare("insert into flur ( gemeinde, gemarkung, flur, response ) values ( ?, ?, ?, ? )") || die $DBI::errstr;
+		my $fetch=$dbh->prepare("select * from flur where gemeinde = ? and gemarkung = ? and flur = ? limit 1") || die $DBI::errstr;
+		my $update=$dbh->prepare("update flur set response = ? where id = ?") || die $DBI::errstr;
+
+		my $responsejson=to_json($feature);
+	
+		# Fetch last response (if we have any)
+		$fetch->execute($feature->{properties}{gemeinde}, $feature->{properties}{gemarkung}, $feature->{properties}{flur});
+		my $row=$fetch->fetchrow_hashref();
+
+		if (defined($row)) {
+			my $oldresp=from_json($row->{response});
+
+			if (length($row->{response}) >= length($responsejson)) {
+				return;
+			}
+		
+			printf("Updating %s %s %s\n", $feature->{properties}{gemeinde}, $feature->{properties}{gemarkung}, $feature->{properties}{flur});
+			$update->execute($responsejson, $row->{id});
+
+			return;
+		}
+
+		printf("Inserting %s %s %s\n", $feature->{properties}{gemeinde}, $feature->{properties}{gemarkung}, $feature->{properties}{flur});
+		$sql->execute($feature->{properties}{gemeinde},
+			$feature->{properties}{gemarkung},
+			$feature->{properties}{flur},
+			to_json($feature));
+
+}
+
+sub fetchgemarkung($ua, $dbh, $left, $bottom, $size) {
+
+	my $right=$left+$size;
+	my $top=$bottom+$size;
+
+	printf("Fetching left/%f/bottom/%f size %f\n",
+		$left, $bottom, $size);
+
+	my $uri="https://geodaten.schleswig-holstein.de/gaialight-sh/_apps/dladownload/_ajax/overview.php";
+	my $uriparm=sprintf("%s?bbox[]=%f&bbox[]=%f&bbox[]=%f&bbox[]=%f&crs=EPSG:25832&type[]=alkis",
+		$uri,
+		$left, $bottom,
+		$right, $top);
+
+	my $request=HTTP::Request->new(GET => $uriparm);
+	$request->header("Content-Type" => "application/json");
+
+	my $response=$ua->request($request);
+
+	my $content=from_json($response->decoded_content());
+
+	#print Dumper($response);
+	#print Dumper($content);
+
+
+	if (!defined($content->{success}) or not $content->{success}) {
+		# Fetching left/536149.000000/bottom/5950784.000000/right/546149.000000/top/5960784.000000
+		# $VAR1 = {
+		#           'success' => bless( do{\(my $o = 0)}, 'JSON::PP::Boolean' ),
+		#           'message' => 'Too many objects returned - max 200',
+		#           'reason' => 'tooManyObjects',
+		#           'max' => 200
+		#         };
+		# 
+		if ($content->{reason} =~ /tooManyObjects/) {
+			my $ns=$size*0.75;
+
+			if ($size < 100) {
+				print Dumper($content);
+				return;
+			}
+			fetchgemarkung($ua, $dbh, $left, $bottom, $ns);
+			fetchgemarkung($ua, $dbh, $left+$ns, $bottom, $ns);
+			fetchgemarkung($ua, $dbh, $left, $bottom+$ns, $ns);
+			fetchgemarkung($ua, $dbh, $left+$ns, $bottom+$ns, $ns);
+			return;
+		}
+		return;
+	}
+
+	foreach my $feature ( @{$content->{result}{features}} ) {
+		insert_flur($dbh, $feature);
+	}
+}
+
+# All
+# GET https://geodaten.schleswig-holstein.de/gaialight-sh/_apps/dladownload/_ajax/overview.php?bbox[]=89375.778725107&bbox[]=5671964.1650993&bbox[]=977665.28224217&bbox[]=6338181.2927371&crs=EPSG:25832&type[]=alkis
+#
+#
+# Top Left SHS
+# GET https://geodaten.schleswig-holstein.de/gaialight-sh/_apps/dladownload/_ajax/overview.php?bbox[]=401149.36324811&bbox[]=6081219.6856729&bbox[]=431944.64035565&bbox[]=6104316.1435035&crs=EPSG:25832&type[]=alkis
+# Bottom
+# GET https://geodaten.schleswig-holstein.de/gaialight-sh/_apps/dladownload/_ajax/overview.php?bbox[]=605554.13505633&bbox[]=5905784.5194808&bbox[]=665879.25570655&bbox[]=5951028.3599684&crs=EPSG:25832&type[]=alkis
+
+my $left=497779.14888506;
+my $bottom=6075090.9443622;
+my $right=502567.25141146;
+my $top=6078682.021257;
+
+for(my $x=401149+2500;$x<685554;$x+=20000) {
+	for(my $y=5905784+2500;$y<6104316;$y+=20000) {
+
+		my $left=$x;
+		my $bottom=$y;
+
+		fetchgemarkung($ua, $dbh, $left, $bottom, 40000);
+	}
+}
+
+#fetchgemarkung($ua, $dbh, $left, $bottom, $right, $top);
+

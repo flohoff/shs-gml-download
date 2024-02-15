@@ -1,0 +1,194 @@
+#!/usr/bin/perl -w
+
+package SHS::Gaia::MultiResponse;
+	use strict;
+	use Clone qw/clone/;
+	use feature 'signatures';
+	no warnings 'experimental::signatures';
+
+	sub new($class, $response) {
+		my $self={
+			response => clone($response)
+		};
+		bless $self, $class;
+		return $self;
+	}
+
+	sub success($self) {
+		if (defined($self->{response}) && $self->{response}{success}) {
+			return 1;
+		}
+		return 0;
+	}
+
+	sub jobid($self) {
+		return $self->{response}{id};
+	}
+
+	sub status_wait($self) {
+		return ($self->{response}{status} // 'n/a') eq 'wait';
+	}
+
+	sub status_done($self) {
+		return ($self->{response}{status} // 'n/a') =~ /done/;
+	}
+
+	sub downloadurl($self) {
+		return $self->{response}{downloadUrl};
+	}
+1;
+
+package SHS::Gaia::Download;
+	use strict;
+	use Clone qw/clone/;
+	use HTTP::Request;
+	use File::Slurp;
+	use feature 'signatures';
+	no warnings 'experimental::signatures';
+
+	my $waitindicatorstart=100;
+
+	sub new($class, $ua, $flur, $ogc_fid) {
+		my $self={
+			multiuri => "https://geodaten.schleswig-holstein.de/gaialight-sh/_apps/dladownload/multi.php",
+			ua => $ua,
+			flur => $flur,
+			ogc_fid => $ogc_fid,
+			time => time(),
+			waitindicator => $waitindicatorstart,
+		};
+		bless $self, $class;
+		return $self;
+	}
+
+	sub start($self) {
+		my $uri1=sprintf("%s?url=%s.xml.gz&buttonClass=file1&id=%s&type=alkis&action=start&_=%s",
+			$self->{multiuri},
+			$self->{flur}, $self->{ogc_fid},
+			sprintf("%s%s", $self->{time}, $self->{waitindicator}));
+
+		my $request=HTTP::Request->new(GET => $uri1);
+		$request->header("Content-Type" => "application/json");
+		my $response=$self->{ua}->request($request);
+
+		my $resp=new SHS::Gaia::MultiResponse(from_json($response->decoded_content()));
+
+		$self->{start}=$resp;
+
+		return $resp;
+	}
+
+	sub wait($self) {
+		while(42) {
+			sleep(1);
+
+			my $uri=sprintf("%s?action=status&job=%s&_=%s",
+				$self->{multiuri},
+				$self->{start}->jobid(),
+				sprintf("%s%s", $self->{time}, $self->{waitindicator}++));
+
+			my $request=HTTP::Request->new(GET => $uri);
+			$request->header("Content-Type" => "application/json");
+			my $response=$self->{ua}->request($request);
+
+			my $resp=new SHS::Gaia::MultiResponse(from_json($response->decoded_content()));
+
+			if (!$resp->status_wait()) {
+				$self->{lastresp}=$resp;
+				return $resp;
+			}
+		}
+	}
+
+	sub download($self) {
+		my $uri=$self->{lastresp}->downloadurl();
+
+		if (!defined($uri)) {
+			return undef;
+		}
+
+		my $request=HTTP::Request->new(GET => $uri);
+		my $response=$self->{ua}->request($request);
+
+		my $content=$response->decoded_content();
+
+		write_file(sprintf('output/%s.zip', $self->{flur}), $content);
+	}
+
+1;
+
+use strict;
+use LWP::UserAgent;
+use JSON;
+use Data::Dumper;
+use DBI;
+use open IO => ":encoding(utf-8)";
+use open ':std';
+use feature 'signatures';
+no warnings 'experimental::signatures';
+
+my $dbhost="dbi:Pg:dbname=shs;host=127.0.0.1";
+my $dblogin="flo";
+my $dbpass="";
+
+my $dbh = DBI->connect($dbhost, $dblogin, $dbpass) or die $DBI::errstr;
+$dbh->{pg_enable_utf8} = 1;
+binmode STDOUT, ":utf8";
+
+my $ua=LWP::UserAgent->new();
+
+#my $ogc_fid="1539";
+#my $flur="010059006";
+
+$ua->add_handler("request_send",  sub { shift->dump; return });
+$ua->add_handler("response_done", sub { shift->dump; return });
+# 
+sub db_fetch_flur($dbh) {
+
+	my $sql1=$dbh->prepare(qq{
+		with _queue_id AS (
+			select id
+			from flur
+			where downloaded is null and downloadlasttry is null
+			limit 1
+			for update skip locked
+		) update flur set downloadlasttry = 'now'::timestamp
+		where id = ANY(select id from _queue_id)
+		returning id,flur,response->'properties'->>'ogc_fid' as ogc_fid
+		});
+
+	my $res1=$sql1->execute();
+	my $row1=$sql1->fetchrow_hashref();
+
+	if (!defined($row1) || !defined($row1->{id})) {
+		printf("Nothing to fetch\n");
+		sleep(2);
+		exit(0);
+	}
+
+	return $row1;
+}
+
+my $row1=db_fetch_flur($dbh);
+my $ogc_fid=$row1->{ogc_fid};
+my $flur=$row1->{flur};
+
+printf("%s %s Starting\n", $flur, $ogc_fid);
+if (-f sprintf("output/%s.zip", $flur)) {
+	printf("%s %s Already have\n", $flur, $ogc_fid);
+	exit;
+}
+my $shsgdl=new SHS::Gaia::Download($ua, $flur, $ogc_fid);
+
+my $res=$shsgdl->start();
+if ($res->success()) {
+	printf("%s %s Waiting\n", $flur, $ogc_fid);
+	my $wait=$shsgdl->wait();
+	if ($wait->status_done()) {
+		printf("%s %s Downloading\n", $flur, $ogc_fid);
+		my $dl=$shsgdl->download();
+	}
+}
+
+my $sql3=$dbh->prepare("update flur set downloaded='now'::timestamp where id = ?");
+$sql3->execute($row1->{id});
