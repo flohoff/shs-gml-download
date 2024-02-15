@@ -140,9 +140,9 @@ my $ua=LWP::UserAgent->new();
 #my $ogc_fid="1539";
 #my $flur="010059006";
 
-$ua->add_handler("request_send",  sub { shift->dump; return });
-$ua->add_handler("response_done", sub { shift->dump; return });
-# 
+#$ua->add_handler("request_send",  sub { shift->dump; return });
+#$ua->add_handler("response_done", sub { shift->dump; return });
+ 
 sub db_fetch_flur($dbh) {
 
 	my $sql1=$dbh->prepare(qq{
