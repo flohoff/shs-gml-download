@@ -127,8 +127,8 @@ use open ':std';
 use feature 'signatures';
 no warnings 'experimental::signatures';
 
-my $dbhost="dbi:Pg:dbname=shs;host=127.0.0.1";
-my $dblogin="flo";
+my $dbhost="dbi:Pg:dbname=shs";
+my $dblogin="";
 my $dbpass="";
 
 my $dbh = DBI->connect($dbhost, $dblogin, $dbpass) or die $DBI::errstr;
