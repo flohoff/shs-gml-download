@@ -28,7 +28,13 @@ d.h. das Polygon der Flure zu haben. Zusätzlich schneidet die API auch die poly
 wenn diese am Rand der Bounding Box sind. Daher updated flure-get die
 polygone wenn deren JSON größer wird (quick hack)
 
-Das dauert ein paar minuten. Danach sollten in der Datenbank so etwa 16000+ Flure sein.
+Je nach Startpunkt und Split Verhältnis kommt es dazu das einige Flure nicht mit ihrem heilen,
+ganzen Polygon geholt werden. Hier könnte man verbessern das man die BBox zwar viertelt, 
+aber jedes viertel 75% der größe der original BBox werden lässt. Work in Progress aber
+auch nicht so wichtig weil nicht das polygon des Flurs, sondern dessen **Flurnummer**
+unf **ogc_fid** später wichtig ist.
+
+Das dauert ein paar Minuten. Danach sollten in der Datenbank 16917 Flure sein.
 
 	flo@p5:~/$ psql shs -c "select count(*) from flur;"
 	 count
