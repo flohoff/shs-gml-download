@@ -10,8 +10,8 @@ use open ':std';
 use feature 'signatures';
 no warnings 'experimental::signatures';
 
-my $dbhost="dbi:Pg:dbname=shs;host=127.0.0.1";
-my $dblogin="flo";
+my $dbhost="dbi:Pg:dbname=shs";
+my $dblogin="";
 my $dbpass="";
 
 my $dbh = DBI->connect($dbhost, $dblogin, $dbpass) or die $DBI::errstr;
@@ -91,7 +91,8 @@ sub fetchgemarkung($ua, $dbh, $left, $bottom, $size) {
 		#         };
 		# 
 		if ($content->{reason} =~ /tooManyObjects/) {
-			my $ns=$size*0.75;
+			printf("\tTo many objects - splitting size\n");
+			my $ns=$size/2;
 
 			if ($size < 100) {
 				print Dumper($content);
@@ -105,7 +106,7 @@ sub fetchgemarkung($ua, $dbh, $left, $bottom, $size) {
 		}
 		return;
 	}
-
+	printf("\tFound %d Flure\n", scalar @{$content->{result}{features}});
 	foreach my $feature ( @{$content->{result}{features}} ) {
 		insert_flur($dbh, $feature);
 	}
@@ -125,8 +126,8 @@ my $bottom=6075090.9443622;
 my $right=502567.25141146;
 my $top=6078682.021257;
 
-for(my $x=401149+2500;$x<685554;$x+=20000) {
-	for(my $y=5905784+2500;$y<6104316;$y+=20000) {
+for(my $x=401149;$x<685554;$x+=20000) {
+	for(my $y=5905784;$y<6104316;$y+=20000) {
 
 		my $left=$x;
 		my $bottom=$y;
