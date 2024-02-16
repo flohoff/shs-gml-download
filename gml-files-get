@@ -107,15 +107,25 @@ package SHS::Gaia::Download;
 		my $uri=$self->{lastresp}->downloadurl();
 
 		if (!defined($uri)) {
-			return undef;
+			return 0;
 		}
 
 		my $request=HTTP::Request->new(GET => $uri);
 		my $response=$self->{ua}->request($request);
 
+		if (!$response->is_success) {
+			return 0;
+		}
+
 		my $content=$response->decoded_content();
 
+		if (!defined($content)) {
+			return 0;
+		}
+
 		write_file(sprintf('output/%s.zip', $self->{flur}), $content);
+
+		return 1;
 	}
 
 1;
@@ -139,9 +149,6 @@ $dbh->{pg_enable_utf8} = 1;
 binmode STDOUT, ":utf8";
 
 my $ua=LWP::UserAgent->new();
-
-#my $ogc_fid="1539";
-#my $flur="010059006";
 
 #$ua->add_handler("request_send",  sub { shift->dump; return });
 #$ua->add_handler("response_done", sub { shift->dump; return });
@@ -189,13 +196,15 @@ if ($res->success()) {
 	printf("%s %s Waiting\n", $flur, $ogc_fid);
 	my $wait=$shsgdl->wait();
 	if (!defined($wait) || !$wait->status_done()) {
-		printf("Wait failed\n");
+		printf("Wait failed - adding 30 seconds\n");
+		sleep(30);
 		exit(1)
 	}
 
 	printf("%s %s Downloading\n", $flur, $ogc_fid);
-	my $dl=$shsgdl->download();
+	if ($shsgdl->download()) {
+		my $sql3=$dbh->prepare("update flur set downloaded='now'::timestamp where id = ?");
+		$sql3->execute($row1->{id});
+	}
 }
 
-my $sql3=$dbh->prepare("update flur set downloaded='now'::timestamp where id = ?");
-$sql3->execute($row1->{id});
